@@ -28,7 +28,21 @@ def decrypt_aes_apikey(encrypted_apikey: str, key: str):
     return apikey
 
 
-my_api_key = b'oEmwY8WXa5WvG/Ehqrz1f79zUh+N7Gw3WHDV6R94Ud7WFEll9zPanQoa/pyq114eAAcBz3DG5l+C\nFwMdkzyB+A==\n' # 在这里输入你的 API 密钥
+# Tool in generating encrypted manually.
+def _encrypt_ase_apikey(apikey: str, key: str):
+    def add_to_16(value):
+        while len(value) % 16 != 0:
+            value += b'\0'
+        return value
+
+    to_encrypt = add_to_16(bytes(json.dumps(apikey).encode('utf-8')))
+
+    key = key.encode()
+    aes = AES.new(key, AES.MODE_ECB)
+    return base64.encodebytes(aes.encrypt(to_encrypt))
+
+
+my_api_key = '' # 在这里输入你的 API 密钥
 
 # if we are running in Docker
 if os.environ.get("dockerrun") == "yes":
@@ -50,12 +64,13 @@ if dockerflag:
         authflag = True
 else:
     if (
-        os.environ.get("CHCB_AES_KEY")
-        and my_api_key and isinstance(my_api_key, bytes)
+        not my_api_key
+        and os.environ.get("CHCB_AES_KEY")
+        and os.environ.get("CHCB_API_KEY")
     ):
-        my_api_key = decrypt_aes_apikey(my_api_key, os.environ["CHCB_AES_KEY"])
-    elif isinstance(my_api_key, bytes):  # Unset my_api_key if it's an encoded byte var.
-        my_api_key = ""
+        my_api_key = decrypt_aes_apikey(
+            os.environ["CHCB_API_KEY"].replace('\\n', '\n').encode(),
+            os.environ["CHCB_AES_KEY"])
 
     if (
         not my_api_key
