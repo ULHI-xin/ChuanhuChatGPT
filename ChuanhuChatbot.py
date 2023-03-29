@@ -2,8 +2,11 @@
 import os
 import logging
 import sys
+import base64
+import json
 
 import gradio as gr
+from Crypto.Cipher import AES
 
 from modules.utils import *
 from modules.presets import *
@@ -16,7 +19,16 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s",
 )
 
-my_api_key = ""  # 在这里输入你的 API 密钥
+
+def decrypt_aes_apikey(encrypted_apikey: str, key: str):
+    key = key.encode()
+    aes = AES.new(key, AES.MODE_ECB)
+    decrypted = aes.decrypt(base64.decodebytes(encrypted_apikey))
+    apikey = json.loads(decrypted.decode().replace('\x00', ''))
+    return apikey
+
+
+my_api_key = b'oEmwY8WXa5WvG/Ehqrz1f79zUh+N7Gw3WHDV6R94Ud7WFEll9zPanQoa/pyq114eAAcBz3DG5l+C\nFwMdkzyB+A==\n' # 在这里输入你的 API 密钥
 
 # if we are running in Docker
 if os.environ.get("dockerrun") == "yes":
@@ -37,6 +49,14 @@ if dockerflag:
     if not (isinstance(username, type(None)) or isinstance(password, type(None))):
         authflag = True
 else:
+    if (
+        os.environ.get("CHCB_AES_KEY")
+        and my_api_key and isinstance(my_api_key, bytes)
+    ):
+        my_api_key = decrypt_aes_apikey(my_api_key, os.environ["CHCB_AES_KEY"])
+    elif isinstance(my_api_key, bytes):  # Unset my_api_key if it's an encoded byte var.
+        my_api_key = ""
+
     if (
         not my_api_key
         and os.path.exists("api_key.txt")
@@ -425,9 +445,10 @@ if __name__ == "__main__":
                 inbrowser=True,
             )
         else:
-            demo.queue(concurrency_count=CONCURRENT_COUNT).launch(
-                share=False, favicon_path="./assets/favicon.ico", inbrowser=True
-            )  # 改为 share=True 可以创建公开分享链接
+            demo.queue(concurrency_count=CONCURRENT_COUNT).launch(server_name="0.0.0.0", server_port=55010, share=False) # 可自定义端口
+            # demo.queue(concurrency_count=CONCURRENT_COUNT).launch(
+            #     share=False, favicon_path="./assets/favicon.ico", inbrowser=True
+            # )  # 改为 share=True 可以创建公开分享链接
         # demo.queue(concurrency_count=CONCURRENT_COUNT).launch(server_name="0.0.0.0", server_port=7860, share=False) # 可自定义端口
         # demo.queue(concurrency_count=CONCURRENT_COUNT).launch(server_name="0.0.0.0", server_port=7860,auth=("在这里填写用户名", "在这里填写密码")) # 可设置用户名与密码
         # demo.queue(concurrency_count=CONCURRENT_COUNT).launch(auth=("在这里填写用户名", "在这里填写密码")) # 适合Nginx反向代理
