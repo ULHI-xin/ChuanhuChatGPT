@@ -6,7 +6,7 @@ import base64
 import json
 
 import gradio as gr
-from Crypto.Cipher import AES
+# from Crypto.Cipher import AES
 
 from modules.utils import *
 from modules.presets import *
@@ -20,29 +20,7 @@ logging.basicConfig(
 )
 
 
-def decrypt_aes_apikey(encrypted_apikey: str, key: str):
-    key = key.encode()
-    aes = AES.new(key, AES.MODE_ECB)
-    decrypted = aes.decrypt(base64.decodebytes(encrypted_apikey))
-    apikey = json.loads(decrypted.decode().replace('\x00', ''))
-    return apikey
-
-
-# Tool in generating encrypted manually.
-def _encrypt_ase_apikey(apikey: str, key: str):
-    def add_to_16(value):
-        while len(value) % 16 != 0:
-            value += b'\0'
-        return value
-
-    to_encrypt = add_to_16(bytes(json.dumps(apikey).encode('utf-8')))
-
-    key = key.encode()
-    aes = AES.new(key, AES.MODE_ECB)
-    return base64.encodebytes(aes.encrypt(to_encrypt))
-
-
-my_api_key = '' # 在这里输入你的 API 密钥
+my_api_key = ''  # 在这里输入你的 API 密钥
 
 # if we are running in Docker
 if os.environ.get("dockerrun") == "yes":
@@ -57,21 +35,16 @@ if dockerflag:
     if my_api_key == "empty":
         logging.error("Please give a api key!")
         sys.exit(1)
+
+    if not my_api_key:
+        my_api_key = ""
+
     # auth
     username = os.environ.get("USERNAME")
     password = os.environ.get("PASSWORD")
     if not (isinstance(username, type(None)) or isinstance(password, type(None))):
         authflag = True
 else:
-    if (
-        not my_api_key
-        and os.environ.get("CHCB_AES_KEY")
-        and os.environ.get("CHCB_API_KEY")
-    ):
-        my_api_key = decrypt_aes_apikey(
-            os.environ["CHCB_API_KEY"].replace('\\n', '\n').encode(),
-            os.environ["CHCB_AES_KEY"])
-
     if (
         not my_api_key
         and os.path.exists("api_key.txt")
