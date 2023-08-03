@@ -6,7 +6,7 @@
 <h1 align="center">川虎 Chat 🐯 Chuanhu Chat</h1>
 <div align="center">
   <a href="https://github.com/GaiZhenBiao/ChuanhuChatGPT">
-    <img src="https://user-images.githubusercontent.com/70903329/227087087-93b37d64-7dc3-4738-a518-c1cf05591c8a.png" alt="Logo" height="156">
+    <img src="https://github.com/GaiZhenbiao/ChuanhuChatGPT/assets/70903329/aca3a7ec-4f1d-4667-890c-a6f47bf08f63" alt="Logo" height="156">
   </a>
 
 <p align="center">
@@ -44,6 +44,23 @@
   </p>
 </div>
 
+## Supported LLM Models
+
+**LLM models via API**:
+
+- [ChatGPT](https://chat.openai.com) ([GPT-4](https://openai.com/product/gpt-4))
+- [Google PaLM](https://developers.generativeai.google/products/palm)
+- [Inspur Yuan 1.0](https://air.inspur.com/home)
+- [MiniMax](https://api.minimax.chat/)
+- [XMChat](https://github.com/MILVLG/xmchat)
+
+**LLM models via local deployment**:
+
+- [ChatGLM](https://github.com/THUDM/ChatGLM-6B) ([ChatGLM2](https://github.com/THUDM/ChatGLM2-6B))
+- [LLaMA](https://github.com/facebookresearch/llama)
+- [StableLM](https://github.com/Stability-AI/StableLM)
+- [MOSS](https://github.com/OpenLMLab/MOSS)
+
 ## Usage Tips
 
 - To better control the ChatGPT, use System Prompt.
@@ -51,11 +68,11 @@
 - To try again if the response is unsatisfactory, use `🔄 Regenerate` button.
 - To start a new line in the input box, press <kbd>Shift</kbd> + <kbd>Enter</kbd> keys.
 - To quickly switch between input history, press <kbd>↑</kbd> and <kbd>↓</kbd> key in the input box.
-- To deploy the program onto a server, change the last line of the program to `demo.launch(server_name="0.0.0.0", server_port=<your port number>)`.
-- To get a public shared link, change the last line of the program to `demo.launch(share=True)`. Please be noted that the program must be running in order to be accessed via a public link.
+- To deploy the program onto a server, set `"server_name": "0.0.0.0", "server_port" <your port number>,` in `config.json`.
+- To get a public shared link, set `"share": true,` in `config.json`. Please be noted that the program must be running in order to be accessed via a public link.
 - To use it in Hugging Face Spaces: It is recommended to **Duplicate Space** and run the program in your own Space for a faster and more secure experience.
 
-## Installation
+## Quickstart
 
 ```shell
 git clone https://github.com/GaiZhenbiao/ChuanhuChatGPT.git
@@ -86,10 +103,6 @@ When you encounter problems, you should try manually pulling the latest changes 
 2. Try installing the dependencies again (as this project may have introduced new dependencies)
    ```
    pip install -r requirements.txt
-   ```
-3. Update Gradio
-   ```
-   pip install gradio --upgrade --force-reinstall
    ```
 
 Generally, you can solve most problems by following these steps.

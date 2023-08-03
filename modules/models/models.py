@@ -15,17 +15,16 @@ from PIL import Image
 
 from tqdm import tqdm
 import colorama
-from duckduckgo_search import ddg
 import asyncio
 import aiohttp
 from enum import Enum
 import uuid
 
 from ..presets import *
-from ..llama_func import *
+from ..index_func import *
 from ..utils import *
 from .. import shared
-from ..config import retrieve_proxy, usage_limit
+from ..config import retrieve_proxy, usage_limit, sensitive_id
 from modules import config
 from .base_model import BaseLLMModel, ModelType
 
@@ -88,21 +87,22 @@ class OpenAIClient(BaseLLMModel):
             try:
                 usage_data = self._get_billing_data(usage_url)
             except Exception as e:
-                logging.error(f"获取API使用情况失败:" + str(e))
+                # logging.error(f"获取API使用情况失败: " + str(e))
+                if "Invalid authorization header" in str(e):
+                    return i18n("**获取API使用情况失败**，需在填写`config.json`中正确填写sensitive_id")
+                elif "Incorrect API key provided: sess" in str(e):
+                    return i18n("**获取API使用情况失败**，sensitive_id错误或已过期")
                 return i18n("**获取API使用情况失败**")
             # rounded_usage = "{:.5f}".format(usage_data["total_usage"] / 100)
             rounded_usage = round(usage_data["total_usage"] / 100, 5)
             usage_percent = round(usage_data["total_usage"] / usage_limit, 2)
             # return i18n("**本月使用金额** ") + f"\u3000 ${rounded_usage}"
-            return """\
-                <b>""" + i18n("本月使用金额") + f"""</b>
-                <div class="progress-bar">
-                    <div class="progress" style="width: {usage_percent}%;">
-                        <span class="progress-text">{usage_percent}%</span>
-                    </div>
-                </div>
-                <div style="display: flex; justify-content: space-between;"><span>${rounded_usage}</span><span>${usage_limit}</span></div>
-                """
+            return get_html("billing_info.html").format(
+                    label = i18n("本月使用金额"),
+                    usage_percent = usage_percent,
+                    rounded_usage = rounded_usage,
+                    usage_limit = usage_limit
+                )
         except requests.exceptions.ConnectTimeout:
             status_text = (
                 STANDARD_ERROR_MSG + CONNECTION_TIMEOUT_MSG + ERROR_RETRIEVE_MSG
@@ -180,8 +180,9 @@ class OpenAIClient(BaseLLMModel):
     def _refresh_header(self):
         self.headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {sensitive_id}",
         }
+
 
     def _get_billing_data(self, billing_url):
         with retrieve_proxy():
@@ -339,7 +340,7 @@ class LLaMA_Client(BaseLLMModel):
             pipeline_args = InferencerArguments(
                 local_rank=0, random_seed=1, deepspeed='configs/ds_config_chatbot.json', mixed_precision='bf16')
 
-            with open(pipeline_args.deepspeed, "r") as f:
+            with open(pipeline_args.deepspeed, "r", encoding="utf-8") as f:
                 ds_config = json.load(f)
             LLAMA_MODEL = AutoModel.get_model(
                 model_args,
@@ -494,7 +495,7 @@ class XMChat(BaseLLMModel):
         limited_context = False
         return limited_context, fake_inputs, display_append, real_inputs, chatbot
 
-    def handle_file_upload(self, files, chatbot):
+    def handle_file_upload(self, files, chatbot, language):
         """if the model accepts multi modal input, implement this function"""
         if files:
             for file in files:
@@ -557,9 +558,11 @@ def get_model(
         config.local_embedding = True
     # del current_model.model
     model = None
+    chatbot = gr.Chatbot.update(label=model_name)
     try:
         if model_type == ModelType.OpenAI:
             logging.info(f"正在加载OpenAI模型: {model_name}")
+            access_key = os.environ.get("OPENAI_API_KEY", access_key)
             model = OpenAIClient(
                 model_name=model_name,
                 api_key=access_key,
@@ -599,21 +602,40 @@ def get_model(
         elif model_type == ModelType.MOSS:
             from .MOSS import MOSS_Client
             model = MOSS_Client(model_name, user_name=user_name)
+        elif model_type == ModelType.YuanAI:
+            from .inspurai import Yuan_Client
+            model = Yuan_Client(model_name, api_key=access_key, user_name=user_name, system_prompt=system_prompt)
+        elif model_type == ModelType.Minimax:
+            from .minimax import MiniMax_Client
+            if os.environ.get("MINIMAX_API_KEY") != "":
+                access_key = os.environ.get("MINIMAX_API_KEY")
+            model = MiniMax_Client(model_name, api_key=access_key, user_name=user_name, system_prompt=system_prompt)
+        elif model_type == ModelType.ChuanhuAgent:
+            from .ChuanhuAgent import ChuanhuAgent_Client
+            model = ChuanhuAgent_Client(model_name, access_key, user_name=user_name)
+        elif model_type == ModelType.GooglePaLM:
+            from .Google_PaLM import Google_PaLM_Client
+            access_key = os.environ.get("GOOGLE_PALM_API_KEY", access_key)
+            model = Google_PaLM_Client(model_name, access_key, user_name=user_name)
+        elif model_type == ModelType.LangchainChat:
+            from .azure import Azure_OpenAI_Client
+            model = Azure_OpenAI_Client(model_name, user_name=user_name)
         elif model_type == ModelType.Unknown:
             raise ValueError(f"未知模型: {model_name}")
         logging.info(msg)
-        chatbot = gr.Chatbot.update(label=model_name)
     except Exception as e:
-        logging.error(e)
+        import traceback
+        traceback.print_exc()
         msg = f"{STANDARD_ERROR_MSG}: {e}"
+    presudo_key = hide_middle_chars(access_key)
     if dont_change_lora_selector:
-        return model, msg, chatbot
+        return model, msg, chatbot, gr.update(), access_key, presudo_key
     else:
-        return model, msg, chatbot, gr.Dropdown.update(choices=lora_choices, visible=lora_selector_visibility)
+        return model, msg, chatbot, gr.Dropdown.update(choices=lora_choices, visible=lora_selector_visibility), access_key, presudo_key
 
 
 if __name__ == "__main__":
-    with open("config.json", "r") as f:
+    with open("config.json", "r", encoding="utf-8") as f:
         openai_api_key = cjson.load(f)["openai_api_key"]
     # set logging level to debug
     logging.basicConfig(level=logging.DEBUG)

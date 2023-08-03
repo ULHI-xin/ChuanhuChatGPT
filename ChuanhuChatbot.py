@@ -12,10 +12,10 @@ from modules.presets import *
 from modules.overwrites import *
 from modules.models.models import get_model
 
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 gr.Chatbot._postprocess_chat_messages = postprocess_chat_messages
 gr.Chatbot.postprocess = postprocess
-PromptHelper.compact_text_chunks = compact_text_chunks
 
 with open("assets/custom.css", "r", encoding="utf-8") as f:
     customCSS = f.read()
@@ -38,17 +38,26 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
         status_display = gr.Markdown(get_geoip(), elem_id="status_display")
     with gr.Row(elem_id="float_display"):
         user_info = gr.Markdown(value="getting user info...", elem_id="user_info")
+        update_info = gr.HTML(get_html("update.html").format(
+            current_version=repo_html(),
+            version_time=version_time(),
+            cancel_btn=i18n("取消"),
+            update_btn=i18n("更新"),
+            seenew_btn=i18n("详情"),
+            ok_btn=i18n("好"),
+            ), visible=check_update)
 
-    with gr.Row().style(equal_height=True):
+    with gr.Row(equal_height=True):
         with gr.Column(scale=5):
             with gr.Row():
-                chatbot = gr.Chatbot(label="Chuanhu Chat", elem_id="chuanhu_chatbot").style(height="100%")
+                chatbot = gr.Chatbot(label="Chuanhu Chat", elem_id="chuanhu_chatbot", latex_delimiters=latex_delimiters_set, height=700)
             with gr.Row():
                 with gr.Column(min_width=225, scale=12):
                     user_input = gr.Textbox(
                         elem_id="user_input_tb",
-                        show_label=False, placeholder=i18n("在这里输入")
-                    ).style(container=False)
+                        show_label=False, placeholder=i18n("在这里输入"),
+                        container=False
+                    )
                 with gr.Column(min_width=42, scale=1):
                     submitBtn = gr.Button(value="", variant="primary", elem_id="submit_btn")
                     cancelBtn = gr.Button(value="", variant="secondary", visible=False, elem_id="cancel_btn")
@@ -77,9 +86,9 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                         label="API-Key",
                     )
                     if multi_api_key:
-                        usageTxt = gr.Markdown(i18n("多账号模式已开启，无需输入key，可直接开始对话"), elem_id="usage_display", elem_classes="insert_block")
+                        usageTxt = gr.Markdown(i18n("多账号模式已开启，无需输入key，可直接开始对话"), elem_id="usage_display", elem_classes="insert_block", visible=show_api_billing)
                     else:
-                        usageTxt = gr.Markdown(i18n("**发送消息** 或 **提交key** 以显示额度"), elem_id="usage_display", elem_classes="insert_block")
+                        usageTxt = gr.Markdown(i18n("**发送消息** 或 **提交key** 以显示额度"), elem_id="usage_display", elem_classes="insert_block", visible=show_api_billing)
                     model_select_dropdown = gr.Dropdown(
                         label=i18n("选择模型"), choices=MODELS, multiselect=False, value=MODELS[DEFAULT_MODEL], interactive=True
                     )
@@ -87,14 +96,8 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                         label=i18n("选择LoRA模型"), choices=[], multiselect=False, interactive=True, visible=False
                     )
                     with gr.Row():
-                        use_streaming_checkbox = gr.Checkbox(
-                            label=i18n("实时传输回答"), value=True, visible=ENABLE_STREAMING_OPTION
-                        )
-                        single_turn_checkbox = gr.Checkbox(label=i18n("单轮对话"), value=False)
-                        use_websearch_checkbox = gr.Checkbox(label=i18n("使用在线搜索"), value=False)
-                        render_latex_checkbox = gr.Checkbox(
-                            label=i18n("渲染LaTeX公式"), value=render_latex, interactive=True, elem_id="render_latex_checkbox"
-                        )
+                        single_turn_checkbox = gr.Checkbox(label=i18n("单轮对话"), value=False, elem_classes="switch_checkbox")
+                        use_websearch_checkbox = gr.Checkbox(label=i18n("使用在线搜索"), value=False, elem_classes="switch_checkbox")
                     language_select_dropdown = gr.Dropdown(
                         label=i18n("选择回复语言（针对搜索&索引功能）"),
                         choices=REPLY_LANGUAGES,
@@ -103,6 +106,7 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                     )
                     index_files = gr.Files(label=i18n("上传"), type="file")
                     two_column = gr.Checkbox(label=i18n("双栏pdf"), value=advance_docs["pdf"].get("two_column", False))
+                    summarize_btn = gr.Button(i18n("总结"))
                     # TODO: 公式ocr
                     # formula_ocr = gr.Checkbox(label=i18n("识别公式"), value=advance_docs["pdf"].get("formula_ocr", False))
 
@@ -112,8 +116,8 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                         placeholder=i18n("在这里输入System Prompt..."),
                         label="System prompt",
                         value=INITIAL_SYSTEM_PROMPT,
-                        lines=10,
-                    ).style(container=False)
+                        lines=10
+                    )
                     with gr.Accordion(label=i18n("加载Prompt模板"), open=True):
                         with gr.Column():
                             with gr.Row():
@@ -123,7 +127,8 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                                         choices=get_template_names(plain=True),
                                         multiselect=False,
                                         value=get_template_names(plain=True)[0],
-                                    ).style(container=False)
+                                        container=False,
+                                    )
                                 with gr.Column(scale=1):
                                     templateRefreshBtn = gr.Button(i18n("🔄 刷新"))
                             with gr.Row():
@@ -134,7 +139,8 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                                             get_template_names(plain=True)[0], mode=1
                                         ),
                                         multiselect=False,
-                                    ).style(container=False)
+                                        container=False,
+                                    )
 
                 with gr.Tab(label=i18n("保存/加载")):
                     with gr.Accordion(label=i18n("保存/加载对话历史记录"), open=True):
@@ -144,10 +150,14 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                                     historyFileSelectDropdown = gr.Dropdown(
                                         label=i18n("从列表中加载对话"),
                                         choices=get_history_names(plain=True),
-                                        multiselect=False
+                                        multiselect=False,
+                                        container=False,
                                     )
-                                with gr.Column(scale=1):
-                                    historyRefreshBtn = gr.Button(i18n("🔄 刷新"))
+                                with gr.Row():
+                                    with gr.Column(min_width=42, scale=1):
+                                        historyRefreshBtn = gr.Button(i18n("🔄 刷新"))
+                                    with gr.Column(min_width=42, scale=1):
+                                        historyDeleteBtn = gr.Button(i18n("🗑️ 删除"))
                             with gr.Row():
                                 with gr.Column(scale=6):
                                     saveFileName = gr.Textbox(
@@ -155,7 +165,8 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                                         placeholder=i18n("设置文件名: 默认为.json，可选为.md"),
                                         label=i18n("设置保存文件名"),
                                         value=i18n("对话历史记录"),
-                                    ).style(container=True)
+                                        container=False,
+                                    )
                                 with gr.Column(scale=1):
                                     saveHistoryBtn = gr.Button(i18n("💾 保存对话"))
                                     exportMarkdownBtn = gr.Button(i18n("📝 导出为Markdown"))
@@ -165,8 +176,12 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                                     downloadFile = gr.File(interactive=True)
 
                 with gr.Tab(label=i18n("高级")):
-                    gr.Markdown(i18n("# ⚠️ 务必谨慎更改 ⚠️\n\n如果无法使用请恢复默认设置"))
-                    gr.HTML(APPEARANCE_SWITCHER, elem_classes="insert_block")
+                    gr.HTML(get_html("appearance_switcher.html").format(label=i18n("切换亮暗色主题")), elem_classes="insert_block")
+                    use_streaming_checkbox = gr.Checkbox(
+                            label=i18n("实时传输回答"), value=True, visible=ENABLE_STREAMING_OPTION, elem_classes="switch_checkbox"
+                        )
+                    checkUpdateBtn = gr.Button(i18n("🔄 检查更新..."), visible=check_update)
+                    gr.Markdown(i18n("# ⚠️ 务必谨慎更改 ⚠️"), elem_id="advanced_warning")
                     with gr.Accordion(i18n("参数"), open=False):
                         temperature_slider = gr.Slider(
                             minimum=-0,
@@ -194,7 +209,7 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                         )
                         stop_sequence_txt = gr.Textbox(
                             show_label=True,
-                            placeholder=i18n("在这里输入停止符，用英文逗号隔开..."),
+                            placeholder=i18n("停止符，用英文逗号隔开..."),
                             label="stop",
                             value="",
                             lines=1,
@@ -254,6 +269,7 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                             label="API-Host",
                             value=config.api_host or shared.API_HOST,
                             lines=1,
+                            container=False,
                         )
                         changeAPIURLBtn = gr.Button(i18n("🔄 切换API地址"))
                         proxyTxt = gr.Textbox(
@@ -262,13 +278,14 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
                             label=i18n("代理地址（示例：http://127.0.0.1:10809）"),
                             value="",
                             lines=2,
+                            container=False,
                         )
                         changeProxyBtn = gr.Button(i18n("🔄 设置代理地址"))
                         default_btn = gr.Button(i18n("🔙 恢复默认设置"))
 
     gr.Markdown(CHUANHU_DESCRIPTION, elem_id="description")
-    gr.HTML(FOOTER.format(versions=versions_html()), elem_id="footer")
-    
+    gr.HTML(get_html("footer.html").format(versions=versions_html()), elem_id="footer")
+
     # https://github.com/gradio-app/gradio/pull/3296
     def create_greeting(request: gr.Request):
         if hasattr(request, "username") and request.username: # is not None or is not ""
@@ -325,6 +342,10 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
         outputs=[saveFileName, systemPromptTxt, chatbot]
     )
 
+    refresh_history_args = dict(
+        fn=get_history_names, inputs=[gr.State(False), user_name], outputs=[historyFileSelectDropdown]
+    )
+
 
     # Chatbot
     cancelBtn.click(interrupt, [current_model], [])
@@ -335,13 +356,15 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
     submitBtn.click(**transfer_input_args).then(**chatgpt_predict_args, api_name="predict").then(**end_outputing_args)
     submitBtn.click(**get_usage_args)
 
-    index_files.change(handle_file_upload, [current_model, index_files, chatbot], [index_files, chatbot, status_display])
+    index_files.change(handle_file_upload, [current_model, index_files, chatbot, language_select_dropdown], [index_files, chatbot, status_display])
+    summarize_btn.click(handle_summarize_index, [current_model, index_files, chatbot, language_select_dropdown], [chatbot, status_display])
 
     emptyBtn.click(
         reset,
         inputs=[current_model],
         outputs=[chatbot, status_display],
         show_progress=True,
+        _js='()=>{clearHistoryHtml();}',
     )
 
     retryBtn.click(**start_outputing_args).then(
@@ -392,7 +415,7 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
     keyTxt.change(set_key, [current_model, keyTxt], [user_api_key, status_display], api_name="set_key").then(**get_usage_args)
     keyTxt.submit(**get_usage_args)
     single_turn_checkbox.change(set_single_turn, [current_model, single_turn_checkbox], None)
-    model_select_dropdown.change(get_model, [model_select_dropdown, lora_select_dropdown, user_api_key, temperature_slider, top_p_slider, systemPromptTxt, user_name], [current_model, status_display, chatbot, lora_select_dropdown], show_progress=True, api_name="get_model")
+    model_select_dropdown.change(get_model, [model_select_dropdown, lora_select_dropdown, user_api_key, temperature_slider, top_p_slider, systemPromptTxt, user_name], [current_model, status_display, chatbot, lora_select_dropdown, user_api_key, keyTxt], show_progress=True, api_name="get_model")
     model_select_dropdown.change(toggle_like_btn_visibility, [model_select_dropdown], [like_dislike_area], show_progress=False)
     lora_select_dropdown.change(get_model, [model_select_dropdown, lora_select_dropdown, user_api_key, temperature_slider, top_p_slider, systemPromptTxt, user_name], [current_model, status_display, chatbot], show_progress=True)
 
@@ -426,7 +449,8 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
         downloadFile,
         show_progress=True,
     )
-    historyRefreshBtn.click(get_history_names, [gr.State(False), user_name], [historyFileSelectDropdown])
+    historyRefreshBtn.click(**refresh_history_args)
+    historyDeleteBtn.click(delete_chat_history, [current_model, historyFileSelectDropdown, user_name], [status_display, historyFileSelectDropdown, chatbot], _js='(a,b,c)=>{return showConfirmationDialog(a, b, c);}')
     historyFileSelectDropdown.change(**load_history_from_file_args)
     downloadFile.change(upload_chat_history, [current_model, downloadFile, user_name], [saveFileName, systemPromptTxt, chatbot])
 
@@ -457,6 +481,7 @@ with gr.Blocks(css=customCSS, theme=small_and_beautiful_theme) as demo:
         [status_display],
         show_progress=True,
     )
+    checkUpdateBtn.click(fn=None, _js='()=>{manualCheckUpdate();}')
 
 logging.info(
     colorama.Back.GREEN
@@ -469,6 +494,7 @@ demo.title = i18n("川虎Chat 🚀")
 if __name__ == "__main__":
     reload_javascript()
     demo.queue(concurrency_count=CONCURRENT_COUNT).launch(
+        blocked_paths=["config.json"],
         server_name=server_name,
         server_port=server_port,
         share=share,
@@ -476,6 +502,3 @@ if __name__ == "__main__":
         favicon_path="./assets/favicon.ico",
         inbrowser=not dockerflag, # 禁止在docker下开启inbrowser
     )
-    # demo.queue(concurrency_count=CONCURRENT_COUNT).launch(server_name="0.0.0.0", server_port=7860, share=False) # 可自定义端口
-    # demo.queue(concurrency_count=CONCURRENT_COUNT).launch(server_name="0.0.0.0", server_port=7860,auth=("在这里填写用户名", "在这里填写密码")) # 可设置用户名与密码
-    # demo.queue(concurrency_count=CONCURRENT_COUNT).launch(auth=("在这里填写用户名", "在这里填写密码")) # 适合Nginx反向代理

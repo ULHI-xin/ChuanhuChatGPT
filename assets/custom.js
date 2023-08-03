@@ -15,20 +15,56 @@ var appTitleDiv = null;
 var chatbot = null;
 var chatbotWrap = null;
 var apSwitch = null;
-var empty_botton = null;
 var messageBotDivs = null;
-var renderLatex = null;
 var loginUserForm = null;
 var logginUser = null;
+var updateToast = null;
+var sendBtn = null;
+var cancelBtn = null;
+var sliders = null;
 
 var userLogged = false;
 var usernameGotten = false;
-var shouldRenderLatex = false;
 var historyLoaded = false;
+var updateInfoGotten = false;
+var isLatestVersion = localStorage.getItem('isLatestVersion') || false;
 
 var ga = document.getElementsByTagName("gradio-app");
 var targetNode = ga[0];
 var isInIframe = (window.self !== window.top);
+var language = navigator.language.slice(0,2);
+var currentTime = new Date().getTime();
+
+var forView_i18n = {
+    'zh': "仅供查看",
+    'en': "For viewing only",
+    'ja': "閲覧専用",
+    'ko': "읽기 전용",
+    'fr': "Pour consultation seulement",
+    'es': "Solo para visualización",
+};
+
+var deleteConfirm_i18n_pref = {
+    'zh': "你真的要删除 ",
+    'en': "Are you sure you want to delete ",
+    'ja': "本当に ",
+    'ko': "정말로 ",
+};
+var deleteConfirm_i18n_suff = {
+    'zh': " 吗？",
+    'en': " ?",
+    'ja': " を削除してもよろしいですか？",
+    'ko': " 을(를) 삭제하시겠습니까?",
+};
+var deleteConfirm_msg_pref = "Are you sure you want to delete ";
+var deleteConfirm_msg_suff = " ?";
+
+var usingLatest_i18n = {
+    'zh': "您使用的就是最新版！",
+    'en': "You are using the latest version!",
+    'ja': "最新バージョンを使用しています！",
+    'ko': "최신 버전을 사용하고 있습니다!",
+};
 
 // gradio 页面加载好了么??? 我能动你的元素了么??
 function gradioLoaded(mutations) {
@@ -40,10 +76,12 @@ function gradioLoaded(mutations) {
             userInfoDiv = document.getElementById("user_info");
             appTitleDiv = document.getElementById("app_title");
             chatbot = document.querySelector('#chuanhu_chatbot');
-            chatbotWrap = document.querySelector('#chuanhu_chatbot > .wrap');
+            chatbotWrap = document.querySelector('#chuanhu_chatbot > .wrapper > .wrap');
             apSwitch = document.querySelector('.apSwitch input[type="checkbox"]');
-            renderLatex = document.querySelector("#render_latex_checkbox > label > input");
-            empty_botton = document.getElementById("empty_btn")
+            updateToast = document.querySelector("#toast-update");
+            sendBtn = document.getElementById("submit_btn");
+            cancelBtn = document.getElementById("cancel_btn");
+            sliders = document.querySelectorAll('input[type="range"]');
 
             if (loginUserForm) {
                 localStorage.setItem("userLogged", true);
@@ -70,22 +108,54 @@ function gradioLoaded(mutations) {
                     loadHistoryHtml();
                 }
                 setChatbotScroll();
+                mObserver.observe(chatbotWrap, { attributes: true, childList: true, subtree: true, characterData: true});
             }
-            if (renderLatex) {  // renderLatex 加载出来了没?
-                shouldRenderLatex = renderLatex.checked;
-                updateMathJax();
+            if (sliders) {
+                setSlider();
             }
-            if (empty_botton) {
-                emptyHistory();
+            if (updateToast) {
+                const lastCheckTime = localStorage.getItem('lastCheckTime') || 0;
+                const longTimeNoCheck = currentTime - lastCheckTime > 3 * 24 * 60 * 60 * 1000;
+                if (longTimeNoCheck && !updateInfoGotten && !isLatestVersion || isLatestVersion && !updateInfoGotten) {
+                    updateLatestVersion();
+                }
+            }
+            if (cancelBtn) {
+                submitObserver.observe(cancelBtn, { attributes: true, characterData: true});
             }
         }
     }
+}
+
+function webLocale() {
+    // console.log("webLocale", language);
+    if (forView_i18n.hasOwnProperty(language)) {
+        var forView = forView_i18n[language];
+        var forViewStyle = document.createElement('style');
+        forViewStyle.innerHTML = '.wrapper>.wrap>.history-message>:last-child::after { content: "' + forView + '"!important; }';
+        document.head.appendChild(forViewStyle);
+    }
+    if (deleteConfirm_i18n_pref.hasOwnProperty(language)) {
+        deleteConfirm_msg_pref = deleteConfirm_i18n_pref[language];
+        deleteConfirm_msg_suff = deleteConfirm_i18n_suff[language];
+    }
+}
+
+function showConfirmationDialog(a, file, c) {
+    if (file != "") {
+        var result = confirm(deleteConfirm_msg_pref + file + deleteConfirm_msg_suff);
+        if (result) {
+            return [a, file, c];
+        }
+    }
+    return [a, "CANCELED", c];
 }
 
 function selectHistory() {
     user_input_ta = user_input_tb.querySelector("textarea");
     if (user_input_ta) {
         observer.disconnect(); // 停止监听
+        disableSendBtn();
         // 在 textarea 上监听 keydown 事件
         user_input_ta.addEventListener("keydown", function (event) {
             var value = user_input_ta.value.trim();
@@ -130,6 +200,13 @@ function selectHistory() {
     }
 }
 
+function disableSendBtn() {
+    sendBtn.disabled = user_input_ta.value.trim() === '';
+    user_input_ta.addEventListener('input', () => {
+        sendBtn.disabled = user_input_ta.value.trim() === '';
+    });
+}
+
 var username = null;
 function getUserInfo() {
     if (usernameGotten) {
@@ -168,8 +245,6 @@ function toggleUserInfoVisibility(shouldHide) {
     }
 }
 function showOrHideUserInfo() {
-    var sendBtn = document.getElementById("submit_btn");
-
     // Bind mouse/touch events to show/hide user info
     appTitleDiv.addEventListener("mouseenter", function () {
         toggleUserInfoVisibility(false);
@@ -225,10 +300,10 @@ function showOrHideUserInfo() {
 
 function toggleDarkMode(isEnabled) {
     if (isEnabled) {
-        gradioContainer.classList.add("dark");
+        document.body.classList.add("dark");
         document.body.style.setProperty("background-color", "var(--neutral-950)", "important");
     } else {
-        gradioContainer.classList.remove("dark");
+        document.body.classList.remove("dark");
         document.body.style.backgroundColor = "";
     }
 }
@@ -253,28 +328,46 @@ function setChatbotHeight() {
     const screenWidth = window.innerWidth;
     const statusDisplay = document.querySelector('#status_display');
     const statusDisplayHeight = statusDisplay ? statusDisplay.offsetHeight : 0;
-    const wrap = chatbot.querySelector('.wrap');
     const vh = window.innerHeight * 0.01;
     document.documentElement.style.setProperty('--vh', `${vh}px`);
     if (isInIframe) {
         chatbot.style.height = `700px`;
-        wrap.style.maxHeight = `calc(700px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`
+        chatbotWrap.style.maxHeight = `calc(700px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`
     } else {
         if (screenWidth <= 320) {
             chatbot.style.height = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 150}px)`;
-            wrap.style.maxHeight = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 150}px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`;
+            chatbotWrap.style.maxHeight = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 150}px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`;
         } else if (screenWidth <= 499) {
             chatbot.style.height = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 100}px)`;
-            wrap.style.maxHeight = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 100}px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`;
+            chatbotWrap.style.maxHeight = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 100}px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`;
         } else {
             chatbot.style.height = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 160}px)`;
-            wrap.style.maxHeight = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 160}px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`;
+            chatbotWrap.style.maxHeight = `calc(var(--vh, 1vh) * 100 - ${statusDisplayHeight + 160}px - var(--line-sm) * 1rem - 2 * var(--block-label-margin))`;
         }
     }
 }
 function setChatbotScroll() {
     var scrollHeight = chatbotWrap.scrollHeight;
     chatbotWrap.scrollTo(0,scrollHeight)
+}
+var rangeInputs = null;
+var numberInputs = null;
+function setSlider() {
+    rangeInputs = document.querySelectorAll('input[type="range"]');
+    numberInputs = document.querySelectorAll('input[type="number"]')
+    setSliderRange();
+    rangeInputs.forEach(rangeInput => {
+        rangeInput.addEventListener('input', setSliderRange);
+    });
+    numberInputs.forEach(numberInput => {
+        numberInput.addEventListener('input', setSliderRange);
+    })
+}
+function setSliderRange() {
+    var range = document.querySelectorAll('input[type="range"]');
+    range.forEach(range => {
+        range.style.backgroundSize = (range.value - range.min) / (range.max - range.min) * 100 + '% 100%';
+    });
 }
 
 function addChuanhuButton(botElement) {
@@ -289,12 +382,12 @@ function addChuanhuButton(botElement) {
         }
         return;
     }
-    var copyButton = null;
-    var toggleButton = null;
-    copyButton = botElement.querySelector('button.copy-bot-btn');
-    toggleButton = botElement.querySelector('button.toggle-md-btn');
-    if (copyButton) copyButton.remove();
-    if (toggleButton) toggleButton.remove();
+    var oldCopyButton = null;
+    var oldToggleButton = null;
+    oldCopyButton = botElement.querySelector('button.copy-bot-btn');
+    oldToggleButton = botElement.querySelector('button.toggle-md-btn');
+    if (oldCopyButton) oldCopyButton.remove();
+    if (oldToggleButton) oldToggleButton.remove();
 
     // Copy bot button
     var copyButton = document.createElement('button');
@@ -302,19 +395,34 @@ function addChuanhuButton(botElement) {
     copyButton.classList.add('copy-bot-btn');
     copyButton.setAttribute('aria-label', 'Copy');
     copyButton.innerHTML = copyIcon;
-    copyButton.addEventListener('click', () => {
+    copyButton.addEventListener('click', async () => {
         const textToCopy = rawMessage.innerText;
-        navigator.clipboard
-            .writeText(textToCopy)
-            .then(() => {
+        try {
+            if ("clipboard" in navigator) {
+                await navigator.clipboard.writeText(textToCopy);
                 copyButton.innerHTML = copiedIcon;
                 setTimeout(() => {
                     copyButton.innerHTML = copyIcon;
                 }, 1500);
-            })
-            .catch(() => {
-                console.error("copy failed");
-            });
+            } else {
+                const textArea = document.createElement("textarea");
+                textArea.value = textToCopy;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    copyButton.innerHTML = copiedIcon;
+                    setTimeout(() => {
+                        copyButton.innerHTML = copyIcon;
+                    }, 1500);
+                } catch (error) {
+                    console.error("Copy failed: ", error);
+                }
+                document.body.removeChild(textArea);
+            }
+        } catch (error) {
+            console.error("Copy failed: ", error);
+        }
     });
     botElement.appendChild(copyButton);
 
@@ -338,41 +446,6 @@ function addChuanhuButton(botElement) {
     botElement.insertBefore(toggleButton, copyButton);
 }
 
-function addCopyCodeButton(pre) {
-    var code = null;
-    var firstChild = null;
-    code = pre.querySelector('code');
-    if (!code) return;
-    firstChild = code.querySelector('div');
-    if (!firstChild) return;
-    var oldCopyButton = null;
-    oldCopyButton = code.querySelector('button.copy-code-btn');
-    // if (oldCopyButton) oldCopyButton.remove();
-    if (oldCopyButton) return; // 没太有用，新生成的对话中始终会被pre覆盖，导致按钮消失，这段代码不启用……
-    var codeButton = document.createElement('button');
-    codeButton.classList.add('copy-code-btn');
-    codeButton.textContent = '\uD83D\uDCCE';
-
-    code.insertBefore(codeButton, firstChild);
-    codeButton.addEventListener('click', function () {
-        var range = document.createRange();
-        range.selectNodeContents(code);
-        range.setStartBefore(firstChild);
-        navigator.clipboard
-            .writeText(range.toString())
-            .then(() => {
-                codeButton.textContent = '\u2714';
-                setTimeout(function () {
-                    codeButton.textContent = '\uD83D\uDCCE';
-                }, 2000);
-            })
-            .catch(e => {
-                console.error(e);
-                codeButton.textContent = '\u2716';
-            });
-    });
-}
-
 function renderMarkdownText(message) {
     var mdDiv = message.querySelector('.md-message');
     if (mdDiv) mdDiv.classList.remove('hideM');
@@ -386,113 +459,53 @@ function removeMarkdownText(message) {
     if (mdDiv) mdDiv.classList.add('hideM');
 }
 
-var rendertime = 0; // for debugging
-var mathjaxUpdated = false;
-
-function renderMathJax() {
-    messageBotDivs = document.querySelectorAll('.message.bot .md-message');
-    for (var i = 0; i < messageBotDivs.length; i++) {
-        var mathJaxSpan = messageBotDivs[i].querySelector('.MathJax_Preview');
-        if (!mathJaxSpan && shouldRenderLatex && !mathjaxUpdated) {
-            MathJax.Hub.Queue(["Typeset", MathJax.Hub, messageBotDivs[i]]);
-            rendertime +=1; // for debugging
-            // console.log("renderingMathJax", i)
-        }
-    }
-    mathjaxUpdated = true;
-    console.log("MathJax Rendered")
-}
-
-function removeMathjax() {
-    // var jax = MathJax.Hub.getAllJax();
-    // for (var i = 0; i < jax.length; i++) {
-    //     // MathJax.typesetClear(jax[i]);
-    //     jax[i].Text(newmath)
-    //     jax[i].Reprocess()
-    // }
-    // 我真的不会了啊啊啊，mathjax并没有提供转换为原先文本的办法。
-    mathjaxUpdated = true;
-    // console.log("MathJax removed!");
-}
-
-function updateMathJax() {
-    renderLatex.addEventListener("change", function() {
-        shouldRenderLatex = renderLatex.checked;
-        // console.log(shouldRenderLatex)
-        if (!mathjaxUpdated) {
-            if (shouldRenderLatex) {
-                renderMathJax();
-            } else {
-                console.log("MathJax Disabled")
-                removeMathjax();
-            }
-        } else {
-            if (!shouldRenderLatex) {
-                mathjaxUpdated = false; // reset
-            }
-        }
-    });
-    if (shouldRenderLatex && !mathjaxUpdated) {
-        renderMathJax();
-    }
-    mathjaxUpdated = false;
-}
-
 let timeoutId;
 let isThrottled = false;
 var mmutation
-// 监听所有元素中 bot message 的变化，用来查找需要渲染的mathjax, 并为 bot 消息添加复制按钮。
+// 监听chatWrap元素的变化，为 bot 消息添加复制按钮。
 var mObserver = new MutationObserver(function (mutationsList) {
     for (mmutation of mutationsList) {
         if (mmutation.type === 'childList') {
             for (var node of mmutation.addedNodes) {
-                if (node.nodeType === 1 && node.classList.contains('message') && node.getAttribute('data-testid') === 'bot') {
-                    if (shouldRenderLatex) {
-                        renderMathJax();
-                        mathjaxUpdated = false;
-                    }
+                if (node.nodeType === 1 && node.classList.contains('message')) {
                     saveHistoryHtml();
-                    document.querySelectorAll('#chuanhu_chatbot>.wrap>.message-wrap .message.bot').forEach(addChuanhuButton);
-                    document.querySelectorAll('#chuanhu_chatbot>.wrap>.message-wrap .message.bot pre').forEach(addCopyCodeButton);
+                    disableSendBtn();
+                    document.querySelectorAll('#chuanhu_chatbot .message-wrap .message.bot').forEach(addChuanhuButton);
                 }
             }
             for (var node of mmutation.removedNodes) {
-                if (node.nodeType === 1 && node.classList.contains('message') && node.getAttribute('data-testid') === 'bot') {
-                    if (shouldRenderLatex) {
-                        renderMathJax();
-                        mathjaxUpdated = false;
-                    }
+                if (node.nodeType === 1 && node.classList.contains('message')) {
                     saveHistoryHtml();
-                    document.querySelectorAll('#chuanhu_chatbot>.wrap>.message-wrap .message.bot').forEach(addChuanhuButton);
-                    document.querySelectorAll('#chuanhu_chatbot>.wrap>.message-wrap .message.bot pre').forEach(addCopyCodeButton);
+                    disableSendBtn();
+                    document.querySelectorAll('#chuanhu_chatbot .message-wrap .message.bot').forEach(addChuanhuButton);
                 }
             }
         } else if (mmutation.type === 'attributes') {
-            if (mmutation.target.nodeType === 1 && mmutation.target.classList.contains('message') && mmutation.target.getAttribute('data-testid') === 'bot') {
-                document.querySelectorAll('#chuanhu_chatbot>.wrap>.message-wrap .message.bot pre').forEach(addCopyCodeButton); // 目前写的是有点问题的，会导致加button次数过多，但是bot对话内容生成时又是不断覆盖pre的……
-                if (isThrottled) break; // 为了防止重复不断疯狂渲染，加上等待_(:з」∠)_
-                isThrottled = true;
-                clearTimeout(timeoutId);
-                timeoutId = setTimeout(() => {
-                    isThrottled = false;
-                    if (shouldRenderLatex) {
-                        renderMathJax();
-                        mathjaxUpdated = false;
-                    }
-                    document.querySelectorAll('#chuanhu_chatbot>.wrap>.message-wrap .message.bot').forEach(addChuanhuButton);
-                    saveHistoryHtml();
-                }, 500);
-            }
+            if (isThrottled) break; // 为了防止重复不断疯狂渲染，加上等待_(:з」∠)_
+            isThrottled = true;
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                isThrottled = false;
+                document.querySelectorAll('#chuanhu_chatbot .message-wrap .message.bot').forEach(addChuanhuButton);
+                saveHistoryHtml();
+                disableSendBtn();
+            }, 1500);
         }
     }
 });
-mObserver.observe(document.documentElement, { attributes: true, childList: true, subtree: true });
+// mObserver.observe(targetNode, { attributes: true, childList: true, subtree: true, characterData: true});
+
+var submitObserver = new MutationObserver(function (mutationsList) {
+    document.querySelectorAll('#chuanhu_chatbot .message-wrap .message.bot').forEach(addChuanhuButton);
+    saveHistoryHtml();
+});
 
 var loadhistorytime = 0; // for debugging
 function saveHistoryHtml() {
-    var historyHtml = document.querySelector('#chuanhu_chatbot > .wrap');
+    var historyHtml = document.querySelector('#chuanhu_chatbot>.wrapper>.wrap');
+    if (!historyHtml) return;   // no history, do nothing
     localStorage.setItem('chatHistory', historyHtml.innerHTML);
-    console.log("History Saved")
+    // console.log("History Saved")
     historyLoaded = false;
 }
 function loadHistoryHtml() {
@@ -510,12 +523,17 @@ function loadHistoryHtml() {
         var tempDiv = document.createElement('div');
         tempDiv.innerHTML = historyHtml;
         var buttons = tempDiv.querySelectorAll('button.chuanhu-btn');
+        var gradioCopyButtons = tempDiv.querySelectorAll('button.copy_code_button');
         for (var i = 0; i < buttons.length; i++) {
             buttons[i].parentNode.removeChild(buttons[i]);
+        }
+        for (var i = 0; i < gradioCopyButtons.length; i++) {
+            gradioCopyButtons[i].parentNode.removeChild(gradioCopyButtons[i]);
         }
         var fakeHistory = document.createElement('div');
         fakeHistory.classList.add('history-message');
         fakeHistory.innerHTML = tempDiv.innerHTML;
+        webLocale();
         chatbotWrap.insertBefore(fakeHistory, chatbotWrap.firstChild);
         // var fakeHistory = document.createElement('div');
         // fakeHistory.classList.add('history-message');
@@ -536,12 +554,98 @@ function clearHistoryHtml() {
         console.log("History Cleared");
     }
 }
-function emptyHistory() {
-    empty_botton.addEventListener("click", function () {
-        clearHistoryHtml();
-    });
-}
 
+var showingUpdateInfo = false;
+async function getLatestRelease() {
+    try {
+        const response = await fetch('https://api.github.com/repos/gaizhenbiao/chuanhuchatgpt/releases/latest');
+        if (!response.ok) {
+            console.log(`Error: ${response.status} - ${response.statusText}`);
+            updateInfoGotten = true;
+            return null;
+          }
+        const data = await response.json();
+        updateInfoGotten = true;
+        return data;
+    } catch (error) {
+        console.log(`Error: ${error}`);
+        updateInfoGotten = true;
+        return null;
+    }
+}
+async function updateLatestVersion() {
+    const currentVersionElement = document.getElementById('current-version');
+    const latestVersionElement = document.getElementById('latest-version-title');
+    const releaseNoteElement = document.getElementById('release-note-content');
+    const currentVersion = currentVersionElement.textContent;
+    const versionTime = document.getElementById('version-time').innerText;
+    const localVersionTime = versionTime !== "unknown" ? (new Date(versionTime)).getTime() : 0;
+    updateInfoGotten = true; //无论成功与否都只执行一次，否则容易api超限...
+    try {
+        const data = await getLatestRelease();
+        const releaseNote = data.body;
+        if (releaseNote) {
+            releaseNoteElement.innerHTML = marked.parse(releaseNote, {mangle: false, headerIds: false});
+        }
+        const latestVersion = data.tag_name;
+        const latestVersionTime = (new Date(data.created_at)).getTime();
+        if (latestVersionTime) {
+            if (localVersionTime < latestVersionTime) {
+                latestVersionElement.textContent = latestVersion;
+                console.log(`New version ${latestVersion} found!`);
+                if (!isInIframe) {openUpdateToast();}      
+            } else {
+                noUpdate();
+            }
+            currentTime = new Date().getTime();
+            localStorage.setItem('lastCheckTime', currentTime);
+        }
+    } catch (error) {
+        console.error(error);
+    }
+}
+function getUpdate() {
+    window.open('https://github.com/gaizhenbiao/chuanhuchatgpt/releases/latest', '_blank');
+    closeUpdateToast();
+}
+function cancelUpdate() {
+    closeUpdateToast();
+}
+function openUpdateToast() {
+    showingUpdateInfo = true;
+    setUpdateWindowHeight();
+}
+function closeUpdateToast() {
+    updateToast.style.setProperty('top', '-500px');
+    showingUpdateInfo = false;
+}
+function manualCheckUpdate() {
+    openUpdateToast();
+    updateLatestVersion();
+    currentTime = new Date().getTime();
+    localStorage.setItem('lastCheckTime', currentTime);
+}
+function noUpdate() {
+    localStorage.setItem('isLatestVersion', 'true');
+    isLatestVersion = true;
+    const versionInfoElement = document.getElementById('version-info-title');
+    const releaseNoteWrap = document.getElementById('release-note-wrap');
+    const gotoUpdateBtn = document.getElementById('goto-update-btn');
+    const closeUpdateBtn = document.getElementById('close-update-btn');
+
+    versionInfoElement.textContent = usingLatest_i18n.hasOwnProperty(language) ? usingLatest_i18n[language] : usingLatest_i18n['en'];
+    releaseNoteWrap.style.setProperty('display', 'none');
+    gotoUpdateBtn.classList.add('hideK');
+    closeUpdateBtn.classList.remove('hideK');
+}
+function setUpdateWindowHeight() {
+    if (!showingUpdateInfo) {return;}
+    const scrollPosition = window.scrollY;
+    // const originalTop = updateToast.style.getPropertyValue('top');
+    const resultTop = scrollPosition - 20 + 'px';
+    updateToast.style.setProperty('top', resultTop);
+}
+    
 // 监视页面内部 DOM 变动
 var observer = new MutationObserver(function (mutations) {
     gradioLoaded(mutations);
@@ -554,8 +658,42 @@ window.addEventListener("DOMContentLoaded", function () {
     historyLoaded = false;
 });
 window.addEventListener('resize', setChatbotHeight);
-window.addEventListener('scroll', setChatbotHeight);
+window.addEventListener('scroll', function(){setChatbotHeight();setUpdateWindowHeight();});
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", adjustDarkMode);
+
+// console suprise
+var styleTitle1 = `
+font-size: 16px;
+font-family: ui-monospace, monospace;
+color: #06AE56;
+`
+var styleDesc1 = `
+font-size: 12px;
+font-family: ui-monospace, monospace;
+`
+function makeML(str) {
+    let l = new String(str)
+    l = l.substring(l.indexOf("/*") + 3, l.lastIndexOf("*/"))
+    return l
+}
+let ChuanhuInfo = function () {
+    /* 
+   ________                      __             ________          __ 
+  / ____/ /_  __  ______ _____  / /_  __  __   / ____/ /_  ____ _/ /_
+ / /   / __ \/ / / / __ `/ __ \/ __ \/ / / /  / /   / __ \/ __ `/ __/
+/ /___/ / / / /_/ / /_/ / / / / / / / /_/ /  / /___/ / / / /_/ / /_  
+\____/_/ /_/\__,_/\__,_/_/ /_/_/ /_/\__,_/   \____/_/ /_/\__,_/\__/  
+                                                                     
+   川虎Chat (Chuanhu Chat) - GUI for ChatGPT API and many LLMs
+ */
+}
+let description = `
+© 2023 Chuanhu, MZhao, Keldos
+GitHub repository: [https://github.com/GaiZhenbiao/ChuanhuChatGPT]\n
+Enjoy our project!\n
+`
+console.log(`%c${makeML(ChuanhuInfo)}`,styleTitle1)
+console.log(`%c${description}`, styleDesc1)
 
 // button svg code
 const copyIcon   = '<span><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" height=".8em" width=".8em" xmlns="http://www.w3.org/2000/svg"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></span>';
