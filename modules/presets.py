@@ -175,6 +175,8 @@ SUMMARIZE_PROMPT = """Write a concise summary of the following:
 CONCISE SUMMARY IN 中文:"""
 
 ALREADY_CONVERTED_MARK = "<!-- ALREADY CONVERTED BY PARSER. -->"
+START_OF_OUTPUT_MARK = "<!-- SOO IN MESSAGE -->"
+END_OF_OUTPUT_MARK = "<!-- EOO IN MESSAGE -->"
 
 small_and_beautiful_theme = gr.themes.Soft(
         primary_hue=gr.themes.Color(
@@ -227,7 +229,7 @@ small_and_beautiful_theme = gr.themes.Soft(
         # button_primary_background_fill_hover="*primary_400",
         # button_primary_border_color="*primary_500",
         button_primary_border_color_dark="*primary_600",
-        button_primary_text_color="wihte",
+        button_primary_text_color="white",
         button_primary_text_color_dark="white",
         button_secondary_background_fill="*neutral_100",
         button_secondary_background_fill_hover="*neutral_50",
