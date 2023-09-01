@@ -55,11 +55,11 @@ with gr.Blocks() as demo:
 
 
 if __name__ == "__main__":
-    if not os.environ.get("my_api_key"):
+    if not os.environ.get("OPENAI_API_KEY"):
         logging.error("Please give a api key!")
         sys.exit(1)
 
-    openai.api_key = os.environ.get("my_api_key")
+    openai.api_key = os.environ.get("OPENAI_API_KEY")
     _port = int(sys.argv[1])
 
     logging.info(
